@@ -96,12 +96,24 @@ resource "aws_instance" "app" {
   instance_type          = var.instance_type
   subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.app.id]
+  key_name               = var.key_pair_name
 
   user_data = <<-EOF
     #!/bin/bash
+    set -e
     apt-get update -y
-    apt-get install -y nodejs npm postgresql-client
-    npm install -g yarn
+    apt-get install -y ca-certificates curl gnupg lsb-release
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    chmod a+r /etc/apt/keyrings/docker.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    apt-get update -y
+    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    systemctl enable docker
+    systemctl start docker
+    usermod -aG docker ubuntu
+    mkdir -p /home/ubuntu/api-cifras
+    chown ubuntu:ubuntu /home/ubuntu/api-cifras
   EOF
 
   tags = merge(local.common_tags, { Name = "${var.project_name}-server" })
