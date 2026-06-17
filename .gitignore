@@ -7,11 +7,16 @@ build/
 
 coverage/
 
+*.pem
+
 .DS_Store
 
 terraform.tfstate
 terraform.tfstate.backup
 .terraform/
+*.tfstate
+*.tfstate.*
+crash.log
 *.tfvars
 !terraform.tfvars.example
 
