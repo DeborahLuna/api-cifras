@@ -1,6 +1,6 @@
 # api-cifras
 
-API REST para gerenciamento de cifras musicais, desenvolvida com Node.js, TypeScript e PostgreSQL. Projeto acadêmico com foco em boas práticas de backend e DevOps.
+API REST para gerenciamento de cifras musicais, desenvolvida com Node.js, TypeScript e PostgreSQL. Projeto acadêmico com foco em boas práticas de backend e DevOps — containerização com Docker, entrega contínua com GitHub Actions e infraestrutura na AWS com Terraform.
 
 ---
 
@@ -16,10 +16,12 @@ API REST para gerenciamento de cifras musicais, desenvolvida com Node.js, TypeSc
 8. [Execução Local](#8-execução-local)
 9. [Endpoints da API](#9-endpoints-da-api)
 10. [Execução dos Testes](#10-execução-dos-testes)
-11. [Pipeline GitHub Actions](#11-pipeline-github-actions)
-12. [Infraestrutura Terraform](#12-infraestrutura-terraform)
-13. [Fluxo de Integração Contínua](#13-fluxo-de-integração-contínua)
-14. [Possíveis Melhorias Futuras](#14-possíveis-melhorias-futuras)
+11. [Docker](#11-docker)
+12. [Pipeline CI/CD](#12-pipeline-cicd)
+13. [Infraestrutura Terraform](#13-infraestrutura-terraform)
+14. [Secrets do GitHub Actions](#14-secrets-do-github-actions)
+15. [Fluxo CI/CD Completo](#15-fluxo-cicd-completo)
+16. [Possíveis Melhorias Futuras](#16-possíveis-melhorias-futuras)
 
 ---
 
@@ -27,7 +29,7 @@ API REST para gerenciamento de cifras musicais, desenvolvida com Node.js, TypeSc
 
 O **api-cifras** expõe uma API REST que permite criar, listar, atualizar e remover músicas com suas respectivas cifras. Cada música contém título, artista, tonalidade e a cifra da música.
 
-O projeto foi construído sem ORM — o acesso ao banco de dados é feito com **SQL puro** via biblioteca [`pg`](https://node-postgres.com/). Essa escolha é intencional: o foco da disciplina é **DevOps, Integração Contínua e Infraestrutura como Código**, e não ferramentas de persistência avançadas. SQL puro também facilita a leitura e auditoria das queries.
+O projeto foi construído sem ORM — o acesso ao banco de dados é feito com **SQL puro** via biblioteca [`pg`](https://node-postgres.com/). Essa escolha é intencional: o foco da disciplina é **DevOps, Integração Contínua e Infraestrutura como Código**, e não ferramentas de persistência avançadas.
 
 ---
 
@@ -36,7 +38,8 @@ O projeto foi construído sem ORM — o acesso ao banco de dados é feito com **
 - Implementar uma API REST seguindo a arquitetura MVC com separação clara de responsabilidades.
 - Aplicar boas práticas de TypeScript (tipagem estrita, sem `any`).
 - Garantir qualidade com testes automatizados (Jest + Supertest).
-- Automatizar o processo de integração contínua com GitHub Actions.
+- Containerizar a aplicação com Docker para ambiente reproduzível.
+- Automatizar CI e CD com GitHub Actions (lint → test → build → push de imagem → deploy).
 - Provisionar infraestrutura na AWS com Terraform (Infraestrutura como Código).
 
 ---
@@ -58,8 +61,6 @@ Request → Route → Middleware (validação) → Controller → Service → Re
 | **Repository** | Único ponto de contato com o banco de dados; executa queries SQL |
 | **Model** | Define os tipos TypeScript da entidade e converte linhas do banco em objetos tipados |
 
-Essa separação segue o princípio **Single Responsibility** do SOLID: cada camada tem um único motivo para mudar.
-
 ---
 
 ## 4. Estrutura de Pastas
@@ -68,40 +69,47 @@ Essa separação segue o princípio **Single Responsibility** do SOLID: cada cam
 api-cifras/
 ├── src/
 │   ├── controllers/
-│   │   └── song.controller.ts   # Recebe HTTP, chama service, devolve resposta
+│   │   └── song.controller.ts
 │   ├── services/
-│   │   └── song.service.ts      # Regras de negócio, lança AppError quando necessário
+│   │   └── song.service.ts
 │   ├── repositories/
-│   │   └── song.repository.ts   # Queries SQL com pg; única camada que toca o banco
+│   │   └── song.repository.ts
 │   ├── models/
-│   │   └── song.model.ts        # Converte row do PostgreSQL em objeto Song tipado
+│   │   └── song.model.ts
 │   ├── routes/
-│   │   ├── index.ts             # Agrega todas as rotas sob /api
-│   │   └── song.routes.ts       # Define rotas /songs com injeção de dependências
+│   │   ├── index.ts
+│   │   └── song.routes.ts
 │   ├── middlewares/
-│   │   ├── errorHandler.ts      # Tratamento global de erros + classe AppError
-│   │   └── validateRequest.ts   # Validação de payloads POST e PUT
+│   │   ├── errorHandler.ts
+│   │   └── validateRequest.ts
 │   ├── config/
-│   │   ├── database.ts          # Instância do Pool do pg (lê .env)
-│   │   └── init.sql             # Script SQL de criação do banco e tabelas
+│   │   ├── database.ts
+│   │   └── init.sql
 │   ├── types/
-│   │   └── song.ts              # Interfaces Song, CreateSongDTO, UpdateSongDTO
-│   ├── app.ts                   # Configura Express, middlewares globais e rotas
-│   └── server.ts                # Ponto de entrada — faz o listen na porta
+│   │   └── song.ts
+│   ├── app.ts
+│   └── server.ts
 │
 ├── tests/
-│   └── songs.test.ts            # Testes de integração com Supertest (mocks de DB)
+│   └── songs.test.ts
+│
+├── scripts/
+│   └── deploy.sh              # Script de deploy via Docker Compose
 │
 ├── terraform/
-│   ├── provider.tf              # Configuração do provider AWS
-│   ├── variables.tf             # Todas as variáveis parametrizadas
-│   ├── main.tf                  # VPC, Subnet, IGW, Route Table, SG, EC2
-│   └── outputs.tf               # IP/DNS da instância e URL da aplicação
+│   ├── provider.tf            # Configuração do provider AWS
+│   ├── variables.tf           # Variáveis parametrizadas
+│   ├── main.tf                # VPC, Subnet, IGW, Route Table, SG, EC2 (com Docker)
+│   └── outputs.tf             # IP/DNS da instância e URL da aplicação
 │
 ├── .github/
 │   └── workflows/
-│       └── ci.yml               # Pipeline de CI: lint → test → build
+│       ├── ci.yml             # CI: lint → test → build (executa em Pull Requests)
+│       └── cd.yml             # CI/CD: build-and-test → build-and-push → deploy (executa em push para main)
 │
+├── Dockerfile                 # Imagem de produção da aplicação
+├── docker-compose.yml         # Orquestração do container da aplicação
+├── .dockerignore
 ├── jest.config.ts
 ├── tsconfig.json
 ├── tsconfig.test.json
@@ -118,22 +126,26 @@ api-cifras/
 
 ### Pré-requisitos
 
-- Node.js >= 20
-- Yarn (`npm install -g yarn`)
-- PostgreSQL >= 14
+- Node.js >= 20 e Yarn (para execução local sem Docker)
+- Docker e Docker Compose (para execução em container)
+- PostgreSQL >= 14 (ou via container)
+- Terraform >= 1.5.0 (para provisionamento de infraestrutura)
+- AWS CLI (para criação do key pair SSH)
 
 ### Instalação
 
 ```bash
-# Clone o repositório
 git clone https://github.com/<seu-usuario>/api-cifras.git
 cd api-cifras
 
-# Instale as dependências
-yarn install
-
 # Copie e preencha o arquivo de variáveis de ambiente
 cp .env.example .env
+```
+
+Para execução local sem Docker, instale as dependências:
+
+```bash
+yarn install
 ```
 
 ---
@@ -149,19 +161,17 @@ cp .env.example .env
 | `DB_USER` | Usuário do banco | `postgres` |
 | `DB_PASSWORD` | Senha do banco | — |
 | `DB_NAME` | Nome do banco de dados | `api_cifras` |
+| `DOCKER_USERNAME` | Usuário do Docker Hub (usado pelo docker-compose) | — |
 
 ---
 
 ## 7. Banco de Dados
 
-### Por que SQL puro?
-
-O projeto usa a biblioteca `pg` diretamente, sem ORM (Prisma, TypeORM, Sequelize etc.). Essa decisão mantém o projeto alinhado ao foco da disciplina — **DevOps e CI/CD** — sem adicionar a complexidade de configuração e migração de um ORM. As queries ficam explícitas e auditáveis, o que facilita a compreensão de quem está aprendendo.
+O projeto usa a biblioteca `pg` diretamente, sem ORM. As queries ficam explícitas e auditáveis.
 
 ### Criação do banco
 
 ```bash
-# Conecte ao PostgreSQL e execute o script de inicialização
 psql -U postgres -f src/config/init.sql
 ```
 
@@ -189,15 +199,25 @@ CREATE TABLE songs (
 
 ## 8. Execução Local
 
+### Sem Docker
+
 ```bash
-# Modo desenvolvimento (hot-reload)
-yarn dev
+yarn dev       # Modo desenvolvimento (hot-reload)
+yarn build     # Build de produção
+yarn start     # Executar build compilado
+```
 
-# Build de produção
-yarn build
+### Com Docker
 
-# Executar build compilado
-yarn start
+```bash
+# Defina DOCKER_USERNAME no .env antes de subir
+docker compose up -d
+
+# Verificar logs
+docker compose logs -f
+
+# Parar
+docker compose down
 ```
 
 A API estará disponível em `http://localhost:3000`.
@@ -224,7 +244,7 @@ Base URL: `http://localhost:3000/api`
   "key": "C",
   "chords": "C C/G Am D",
   "created_at": "2024-01-01T00:00:00.000Z",
-  "updated_at": "2024-01-01T00:00:00.000Z",
+  "updated_at": "2024-01-01T00:00:00.000Z"
 }
 ```
 
@@ -265,14 +285,11 @@ curl -X DELETE http://localhost:3000/api/songs/1
 
 ## 10. Execução dos Testes
 
-Os testes usam **Supertest** para fazer requisições HTTP reais contra a aplicação Express, e **Jest mocks** para isolar o banco de dados. Isso permite que o CI execute os testes sem precisar de um PostgreSQL em execução.
+Os testes usam **Supertest** para fazer requisições HTTP reais contra a aplicação Express, e **Jest mocks** para isolar o banco de dados — o CI executa sem precisar de PostgreSQL em execução.
 
 ```bash
-# Executar todos os testes
-yarn test
-
-# Executar com relatório de cobertura
-yarn test:coverage
+yarn test             # Executar todos os testes
+yarn test:coverage    # Com relatório de cobertura
 ```
 
 ### Cobertura dos testes
@@ -288,39 +305,97 @@ yarn test:coverage
 
 ---
 
-## 11. Pipeline GitHub Actions
+## 11. Docker
 
-Arquivo: `.github/workflows/ci.yml`
+### Dockerfile
 
-O pipeline é acionado em todo push ou pull request para a branch `main`.
+A imagem é construída a partir do `node:20-alpine`, instala as dependências com `--frozen-lockfile`, compila o TypeScript e executa o servidor via `node dist/server.js`.
 
-```
-Push para main
-      │
-      ▼
-  Checkout
-      │
-      ▼
-Setup Node.js 20
-      │
-      ▼
-yarn install --frozen-lockfile
-      │
-      ▼
-yarn lint          ← ESLint com @typescript-eslint
-      │
-      ▼
-yarn test          ← Jest + Supertest (sem banco de dados)
-      │
-      ▼
-yarn build         ← Compilação TypeScript
+```bash
+# Build manual da imagem
+docker build -t api-cifras .
+
+# Executar container manualmente
+docker run -p 3000:3000 --env-file .env api-cifras
 ```
 
-Se qualquer etapa falhar, o pipeline para e o commit fica marcado com status de falha. Não há deploy automático nesta fase.
+### docker-compose.yml
+
+O Compose usa a imagem publicada no Docker Hub (definida pela variável `DOCKER_USERNAME`), expõe a porta 3000, lê o `.env` e reinicia automaticamente o container em caso de falha.
+
+Um healthcheck verifica a cada 30 segundos se o endpoint `/health` está respondendo.
+
+### Script de deploy
+
+O arquivo `scripts/deploy.sh` automatiza o ciclo de atualização do container na EC2:
+
+```bash
+# Para uso manual na EC2 (DOCKER_USERNAME deve estar no ambiente ou .env)
+bash scripts/deploy.sh
+```
+
+O script executa: `docker compose down` → `docker pull` da imagem mais recente → `docker compose up -d`.
 
 ---
 
-## 12. Infraestrutura Terraform
+## 12. Pipeline CI/CD
+
+O projeto usa dois workflows no GitHub Actions com responsabilidades distintas:
+
+### `ci.yml` — Integração Contínua (Pull Requests)
+
+Disparado em todo Pull Request para `main`. Garante que o código não quebra antes de ser mesclado.
+
+```
+Pull Request para main
+        │
+        ▼
+   Checkout
+        │
+        ▼
+ Setup Node.js 20
+        │
+        ▼
+yarn install --frozen-lockfile
+        │
+        ▼
+  yarn lint      ← ESLint + TypeScript
+        │
+        ▼
+  yarn test      ← Jest + Supertest (sem banco)
+        │
+        ▼
+  yarn build     ← Compilação TypeScript
+```
+
+### `cd.yml` — Pipeline CI/CD Completo (Push para main)
+
+Disparado em todo push para `main` (após PR aprovado e mesclado). Possui três jobs encadeados — cada um só executa se o anterior passar:
+
+```
+Push para main
+        │
+        ▼
+┌──────────────────┐
+│  build-and-test  │  lint → test → build
+└────────┬─────────┘
+         │ (passou)
+         ▼
+┌──────────────────┐
+│  build-and-push  │  docker build → docker push (Docker Hub)
+└────────┬─────────┘
+         │ (passou)
+         ▼
+┌──────────────────┐
+│     deploy       │  SCP docker-compose → cria .env → docker compose up (EC2)
+└──────────────────┘
+```
+
+Se qualquer job falhar, os seguintes não executam — o deploy nunca acontece com código com erro.
+
+---
+
+## 13. Infraestrutura Terraform
 
 ### Recursos provisionados na AWS
 
@@ -331,7 +406,9 @@ Se qualquer etapa falhar, o pipeline para e o commit fica marcado com status de 
 | `aws_subnet` (pública) | Sub-rede com IP público automático |
 | `aws_route_table` | Encaminha tráfego da subnet para o IGW |
 | `aws_security_group` | Permite SSH (22), HTTP (80) e porta da app (3000) |
-| `aws_instance` (EC2 Ubuntu) | Servidor de aplicação |
+| `aws_instance` (EC2 Ubuntu) | Servidor de aplicação com Docker pré-instalado |
+
+A instância EC2 é provisionada com um script `user_data` que instala o Docker Engine e o Docker Compose plugin automaticamente na primeira inicialização, sem intervenção manual.
 
 ### Variáveis principais
 
@@ -341,80 +418,110 @@ Se qualquer etapa falhar, o pipeline para e o commit fica marcado com status de 
 | `project_name` | `api-cifras` | Prefixo para nomes de recursos |
 | `environment` | `dev` | Ambiente |
 | `instance_type` | `t3.micro` | Tipo da instância EC2 |
-| `allowed_ssh_cidr` | `0.0.0.0/0` | CIDR permitido para SSH |
+| `key_pair_name` | — | Nome do key pair SSH existente na AWS (obrigatório) |
 
-### Comandos
-
-```bash
-cd terraform
-
-# 1. Inicializar o backend e baixar providers
-terraform init
-
-# 2. Ver o plano de execução (sem criar nada)
-terraform plan
-
-# 3. Aplicar a infraestrutura
-terraform apply
-
-# 4. Destruir todos os recursos
-terraform destroy
-```
-
-### Credenciais AWS
-
-Não há credenciais no código. Configure-as via variáveis de ambiente antes de rodar o Terraform:
+### Criando a infraestrutura
 
 ```bash
+# 1. Exportar credenciais AWS
 export AWS_ACCESS_KEY_ID="sua-chave"
 export AWS_SECRET_ACCESS_KEY="sua-chave-secreta"
-export AWS_DEFAULT_REGION="us-east-1"
+
+# 2. Criar key pair SSH na AWS (apenas na primeira vez)
+aws ec2 create-key-pair \
+  --key-name api-cifras-key \
+  --region us-east-1 \
+  --query 'KeyMaterial' \
+  --output text > api-cifras-key.pem
+chmod 400 api-cifras-key.pem
+
+# 3. Inicializar e aplicar
+cd terraform
+terraform init
+terraform apply -var="key_pair_name=api-cifras-key"
+
+# 4. Obter o IP público (usado como EC2_HOST no GitHub)
+terraform output ec2_public_ip
+
+# 5. Destruir quando não precisar mais (evita cobrança)
+terraform destroy -var="key_pair_name=api-cifras-key"
 ```
 
 ### Outputs
 
-Após o `terraform apply`, os seguintes valores são exibidos:
-
-- `ec2_public_ip` — IP público da instância
-- `ec2_public_dns` — DNS público da instância
-- `app_url` — URL base da aplicação
+| Output | Descrição |
+|---|---|
+| `ec2_public_ip` | IP público da instância (usar como `EC2_HOST`) |
+| `ec2_public_dns` | DNS público da instância |
+| `app_url` | URL base da aplicação |
 
 ---
 
-## 13. Fluxo de Integração Contínua
+## 14. Secrets do GitHub Actions
+
+Configure em **Settings → Secrets and variables → Actions** do repositório:
+
+| Secret | Descrição | Como obter |
+|---|---|---|
+| `DOCKER_USERNAME` | Usuário do Docker Hub | Conta Docker Hub |
+| `DOCKER_PASSWORD` | Senha/token do Docker Hub | Conta Docker Hub |
+| `EC2_HOST` | IP público da EC2 | `terraform output ec2_public_ip` |
+| `EC2_USER` | Usuário SSH da EC2 | `ubuntu` (padrão AMI Ubuntu) |
+| `EC2_SSH_KEY` | Chave privada SSH (conteúdo do `.pem`) | Arquivo `api-cifras-key.pem` |
+| `DB_HOST` | Host do banco de dados | `localhost` se o banco rodar na EC2 |
+| `DB_PORT` | Porta do PostgreSQL | `5432` |
+| `DB_USER` | Usuário do banco | — |
+| `DB_PASSWORD` | Senha do banco | — |
+| `DB_NAME` | Nome do banco | `api_cifras` |
+
+---
+
+## 15. Fluxo CI/CD Completo
 
 ```
-Desenvolvedor faz push para main
+Desenvolvedor abre Pull Request
            │
            ▼
-   GitHub Actions dispara CI
+   ci.yml: lint + test + build
            │
     ┌──────┴──────┐
-    │  Lint falha? │ ──► Build marcado como FAILED
+    │  Falhou?    │ ──► PR bloqueado para merge
     └──────┬──────┘
            │ (passou)
+           ▼
+   PR aprovado e mesclado em main
+           │
+           ▼
+   cd.yml job 1: build-and-test
+           │
     ┌──────┴──────┐
-    │ Testes falham?│ ──► Build marcado como FAILED
+    │  Falhou?    │ ──► Pipeline para, sem deploy
     └──────┬──────┘
            │ (passou)
+           ▼
+   cd.yml job 2: build-and-push
+   (docker build + push para Docker Hub)
+           │
     ┌──────┴──────┐
-    │ Build falha? │ ──► Build marcado como FAILED
+    │  Falhou?    │ ──► Pipeline para, sem deploy
     └──────┬──────┘
            │ (passou)
-    Build marcado como SUCCESS
+           ▼
+   cd.yml job 3: deploy
+   (SCP docker-compose → cria .env → docker compose up na EC2)
+           │
+           ▼
+   Nova versão em produção
 ```
-
-O desenvolvedor só recebe o sinal verde se todas as etapas passarem. Não há CD (Continuous Delivery) nesta fase.
 
 ---
 
-## 14. Possíveis Melhorias Futuras
+## 16. Possíveis Melhorias Futuras
 
-- **Docker & Docker Compose**: containerizar a aplicação e o banco para facilitar execução local e deploy.
-- **CD (Continuous Delivery)**: adicionar etapa de deploy automático para EC2 após CI verde.
 - **Migrations**: substituir o `init.sql` por um sistema de migrations (ex.: `node-pg-migrate`) para controle versionado do schema.
 - **Autenticação**: adicionar JWT para proteger os endpoints de escrita.
 - **Paginação**: implementar paginação no `GET /songs` para lidar com grandes volumes.
 - **Cache**: usar Redis para cachear listagens frequentes.
 - **Monitoramento**: integrar com CloudWatch ou Prometheus/Grafana.
 - **HTTPS**: adicionar certificado TLS via AWS Certificate Manager + ALB.
+- **Banco em container**: adicionar serviço PostgreSQL no docker-compose para ambiente de produção autocontido.
